@@ -1,103 +1,89 @@
-# tmux-plugin-template
+<div align="center">
+
+<h1>tmux-plugin-template</h1>
+
+**A template for building non-blocking tmux status plugins.**
 
 [![Tests](https://github.com/gufranco/tmux-plugin-template/actions/workflows/tests.yml/badge.svg)](https://github.com/gufranco/tmux-plugin-template/actions/workflows/tests.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A starting point for fast, non-blocking tmux status plugins.
+</div>
 
-Every status plugin built from this template shares one rule: the status render
-never waits on slow work, and nothing is written to a temp file. A cached value
-lives in a tmux server user-option and is read instantly. When it goes stale, a
-detached background worker recomputes it and writes it back. The result is a
-status bar that stays responsive even when the underlying probe is slow, such as a
-CPU sample or a network call.
+**54** tests · **95%+** coverage · **2** platforms · **0** temp files
 
-## What you get
+This is the shared foundation for the `tmux-*-revamped` status plugins. It provides an async, temp-file-free cache that keeps all state in tmux server user-options, so the status bar reads a cached value instantly while a detached worker recomputes stale values in the background. It also ships platform helpers, a bats test harness that runs on bash 3.2, kcov coverage tooling, and CI.
 
-- `src/lib/utils/cache.sh`: the async, temp-file-free cache.
-- `src/lib/utils/platform.sh`: memoized OS detection.
-- `src/lib/tmux/tmux-ops.sh`: tmux option get, set, and unset.
-- `src/lib/utils/has-command.sh`: command availability probe.
-- `src/lib/utils/error-logger.sh`: opt-in logging, off by default.
-- `src/lib/utils/constants.sh`: shared defaults.
-- `test/helpers.bash`: unit harness with a directory-backed tmux mock that runs on bash 3.2.
-- `test/tmux_helpers.bash`: integration harness with a real tmux socket.
-- `Makefile`, `.github/workflows/tests.yml`: test, lint, and a kcov coverage gate.
+<table>
+<tr>
+<td width="50%">
 
-## How the cache works
+### Non-blocking cache
 
-A plugin sets `CACHE_PREFIX` to namespace its options, then drives every
-placeholder through the cache. The worker computes a raw value once; the
-placeholder scripts are pure mappers that read it.
+The hot path reads a cached tmux user-option and returns at once; a detached worker recomputes the value when it goes stale.
 
-```bash
-CACHE_PREFIX="cpu_revamped"
-source "src/lib/utils/cache.sh"
+</td>
+<td width="50%">
 
-# Worker: the only place slow work happens. Runs in the background.
-refresh_cpu() {
-  local pct
-  pct=$(read_cpu_percentage)     # may sample for a moment; off the hot path
-  cache_set percent "${pct}"
-}
+### No temp files
 
-# Hot path: trigger a refresh when stale, then echo the cached value at once.
-cache_render percent 5 refresh_cpu
+All state lives in tmux server options, so nothing touches the filesystem.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### bash 3.2 compatible
+
+The test harness runs on the macOS system bash without a newer interpreter.
+
+</td>
+<td width="50%">
+
+### Coverage enforced
+
+CI runs a kcov gate that fails below 95%.
+
+</td>
+</tr>
+</table>
+
+## Use this template
+
+On GitHub, click "Use this template" to generate a new repository from this one, or run `gh repo create <owner>/tmux-<metric>-revamped --template <owner>/tmux-plugin-template`.
+
+A plugin built from the template follows the layout the shared core expects: source the cache from [`src/lib/utils/cache.sh`](src/lib/utils/cache.sh), set a `CACHE_PREFIX` to namespace its options, add per-platform parsers under [`src/lib`](src/lib), and add one bats file per module under [`test/`](test) at 95%+ coverage. See [`examples/`](examples) for a worked dispatcher and worker.
+
+## Structure
+
+The shared shell modules live under [`src/`](src) and their tests under [`test/`](test).
+
+```
+src/
+  lib/
+    tmux/
+      tmux-ops.sh        tmux option get, set, and unset
+    utils/
+      cache.sh           async, temp-file-free cache
+      platform.sh        memoized OS detection
+      has-command.sh     command availability probe
+      error-logger.sh    opt-in logging, off by default
+      constants.sh       shared defaults
+test/                    bats suites, helpers, and tmux mock
+examples/                worked dispatcher and worker
+.github/                 Tests workflow and CI
+Makefile                 test, lint, and coverage targets
 ```
 
-State for key `percent` under prefix `cpu_revamped` lives in:
+## Development
 
-| Option | Meaning |
-|--------|---------|
-| `@cpu_revamped_percent` | the value |
-| `@cpu_revamped_percent_ts` | unix epoch of the last write |
-| `@cpu_revamped_percent_lock` | `1` while a worker runs |
-| `@cpu_revamped_percent_lock_ts` | unix epoch the lock was taken |
-
-The cache API:
-
-| Function | Purpose |
-|----------|---------|
-| `cache_get KEY` | echo the cached value, empty when unset |
-| `cache_set KEY VALUE` | store a value and stamp the write time |
-| `cache_age KEY` | seconds since the last write |
-| `cache_is_fresh KEY MAX_AGE` | true when within MAX_AGE seconds |
-| `cache_should_refresh KEY MAX_AGE` | true when stale and unlocked |
-| `cache_refresh_if_stale KEY MAX_AGE WORKER` | background-refresh when stale |
-| `cache_render KEY MAX_AGE WORKER` | refresh when stale, then echo the value |
-
-Set `CACHE_SYNC=1` to run the worker inline instead of detached. Tests use this.
-
-## Create a plugin from this template
-
-1. On GitHub, choose "Use this template" to generate a new repository, or
-   `gh repo create <owner>/tmux-<metric>-revamped --template <owner>/tmux-plugin-template`.
-2. Set `CACHE_PREFIX` and the logging namespace for your metric in the dispatcher.
-3. Add `src/lib/<metric>/<metric>.sh` with pure, per-platform parsers.
-4. Add `src/<plugin>.sh` as the dispatcher and `<plugin>-revamped.tmux` as the
-   entry point that registers your status placeholders.
-5. Add one bats file per module under `test/lib/`, keeping coverage at 95%.
-6. To pull later improvements to the shared core, add this template as a remote:
-   `git remote add upstream <template-url>` and merge the shared files when needed.
-
-## Conventions
-
-- `#!/usr/bin/env bash`, bash arrays and `[[ ]]`, not POSIX.
-- Source guards named `_TMUX_PLUGIN_<MODULE>_LOADED`.
-- `export -f` on every public function.
-- Option names namespaced `@<plugin>_revamped_*`.
-- shellcheck clean at `--severity=warning`.
-
-## Testing
-
-```bash
-make test        # full bats suite, unit and integration
-make test-unit   # unit tests only
-make lint        # shellcheck
-make coverage    # kcov line coverage, enforces 95% (Linux)
-```
-
-Coverage runs on the Linux CI job. On macOS, SIP prevents kcov from tracing bash
-through bats, so measure coverage on Linux and rely on the bats suite locally.
+| Command | Description |
+|---------|-------------|
+| `make test` | Run the full test suite |
+| `make test-unit` | Run unit tests only |
+| `make coverage` | Measure line coverage with kcov and enforce the minimum, Linux only |
+| `make lint` | Run shellcheck on all shell files |
+| `make clean` | Remove coverage and temp artifacts |
+| `make help` | Show available targets |
 
 ## License
 
