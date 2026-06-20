@@ -1,5 +1,7 @@
 # tmux-plugin-template
 
+[![Tests](https://github.com/gufranco/tmux-plugin-template/actions/workflows/tests.yml/badge.svg)](https://github.com/gufranco/tmux-plugin-template/actions/workflows/tests.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A starting point for fast, non-blocking tmux status plugins.
 
 Every status plugin built from this template shares one rule: the status render
@@ -17,7 +19,7 @@ CPU sample or a network call.
 - `src/lib/utils/has-command.sh`: command availability probe.
 - `src/lib/utils/error-logger.sh`: opt-in logging, off by default.
 - `src/lib/utils/constants.sh`: shared defaults.
-- `test/helpers.bash`: unit harness with an in-memory tmux mock.
+- `test/helpers.bash`: unit harness with a directory-backed tmux mock that runs on bash 3.2.
 - `test/tmux_helpers.bash`: integration harness with a real tmux socket.
 - `Makefile`, `.github/workflows/tests.yml`: test, lint, and a kcov coverage gate.
 
